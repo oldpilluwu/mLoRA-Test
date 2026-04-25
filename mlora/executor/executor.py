@@ -1,4 +1,5 @@
 import logging
+import time
 from typing import Callable, Dict, Optional
 
 import torch
@@ -99,7 +100,10 @@ class Executor:
         mm_collect_step = 0
 
         while not self.dispatcher_.is_done():
+            iter_start = time.perf_counter()
+            data_start = time.perf_counter()
             data: MLoRAData | None = self.dispatcher_.data()
+            data_end = time.perf_counter()
             assert data is not None
 
             torch.cuda.reset_peak_memory_stats(device=self.model_.device_)
@@ -107,7 +111,11 @@ class Executor:
             batch_size = data.batch_size()
             token_len = data.token_len()
 
+            forward_start = time.perf_counter()
             output = self.model_.forward(data.model_data())
+            forward_end = time.perf_counter()
+
+            loss_start = time.perf_counter()
             labels = torch.tensor(data.batch_tokens_, dtype=torch.long)
 
             total_loss: Optional[torch.Tensor] = None
@@ -117,21 +125,65 @@ class Executor:
                 if loss is None:
                     continue
                 total_loss = loss if total_loss is None else total_loss + loss
+            loss_end = time.perf_counter()
 
+            backward_start = time.perf_counter()
             if total_loss is not None:
                 total_loss.backward()
+            backward_end = time.perf_counter()
 
+            trace_state = self.dispatcher_.trace_state(data)
+
+            step_start = time.perf_counter()
             self.dispatcher_.step()
+            step_end = time.perf_counter()
             mm_collect_step += 1
+
+            max_memory_allocated = torch.cuda.max_memory_allocated(
+                device=self.model_.device_
+            )
+            memory_allocated = torch.cuda.memory_allocated(device=self.model_.device_)
+            memory_reserved = torch.cuda.memory_reserved(device=self.model_.device_)
+            max_memory_reserved = torch.cuda.max_memory_reserved(
+                device=self.model_.device_
+            )
+            try:
+                memory_free, memory_total = torch.cuda.mem_get_info(
+                    device=torch.device(self.model_.device_)
+                )
+            except Exception:
+                memory_free, memory_total = None, None
 
             mlora.profiler.metric_log_dict(
                 "memory",
                 {
                     "batch_size": batch_size,
                     "token_len": token_len,
-                    "memory": torch.cuda.max_memory_allocated(
-                        device=self.model_.device_
-                    ),
+                    "memory": max_memory_allocated,
                 },
                 mm_collect_step,
             )
+
+            iter_end = time.perf_counter()
+            trace_payload = {
+                "iteration": mm_collect_step,
+                "timing_sec": {
+                    "dispatcher_data": data_end - data_start,
+                    "forward": forward_end - forward_start,
+                    "loss": loss_end - loss_start,
+                    "backward": backward_end - backward_start,
+                    "dispatcher_step": step_end - step_start,
+                    "total": iter_end - iter_start,
+                },
+                "memory_bytes": {
+                    "allocated": memory_allocated,
+                    "reserved": memory_reserved,
+                    "max_allocated": max_memory_allocated,
+                    "max_reserved": max_memory_reserved,
+                    "free": memory_free,
+                    "total": memory_total,
+                },
+                "loss": None if total_loss is None else float(total_loss.item()),
+                **trace_state,
+            }
+            mlora.profiler.trace_json_log("executor_iteration", trace_payload)

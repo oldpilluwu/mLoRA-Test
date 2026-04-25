@@ -53,6 +53,82 @@ class Dispatcher:
     def info(self) -> Dict[str, Any]:
         return {"name": self.name_, "concurrency_num": self.concurrency_num_}
 
+    def __task_trace_info(self, task: Task) -> Dict[str, Any]:
+        adapter = getattr(task.config_, "adapter_", None)
+        adapters = []
+        if adapter is not None:
+            adapters.append(adapter)
+
+        reference = getattr(task.config_, "reference_", None)
+        if reference is not None:
+            adapters.append(reference)
+
+        return {
+            "name": task.task_name(),
+            "type": task.task_type(),
+            "adapters": [
+                {
+                    "name": getattr(item, "name_", ""),
+                    "type": getattr(item, "type_", ""),
+                    "rank": getattr(item, "r_", None),
+                    "target_modules": [
+                        key
+                        for key, value in getattr(item, "target_", {}).items()
+                        if value
+                    ],
+                }
+                for item in adapters
+            ],
+            "mini_batch_size": getattr(task.config_, "mini_batch_size_", None),
+            "batch_size": getattr(task.config_, "batch_size_", None),
+            "now_step": getattr(task, "now_step_", None),
+            "now_epoch": getattr(task, "now_epoch_", None),
+        }
+
+    def trace_state(self, data: MLoRAData | None = None) -> Dict[str, Any]:
+        ret: Dict[str, Any] = {
+            "dispatcher": self.info(),
+            "ready_count": len(self.ready_),
+            "running_count": len(self.running_),
+            "ready_tasks": [self.__task_trace_info(task) for task in self.ready_],
+            "running_tasks": [self.__task_trace_info(task) for task in self.running_],
+        }
+
+        if data is None:
+            return ret
+
+        token_lengths = [len(tokens) for tokens in data.batch_tokens_]
+        useful_token_counts = [
+            sum(1 for mask in masks if not mask) for masks in data.batch_mask_
+        ]
+        padded_tokens = sum(token_lengths)
+        useful_tokens = sum(useful_token_counts)
+
+        ret["batch"] = {
+            "combined_batch_size": data.batch_size(),
+            "token_len": data.token_len(),
+            "padded_tokens": padded_tokens,
+            "useful_tokens": useful_tokens,
+            "padding_waste": (
+                0.0
+                if padded_tokens == 0
+                else 1.0 - (float(useful_tokens) / float(padded_tokens))
+            ),
+            "data_configs": [
+                {
+                    "task_name": item.task_name_,
+                    "adapter_name": item.adapter_name_,
+                    "adapter_type": item.adapter_type_,
+                    "batch_start_idx": item.batch_start_idx_,
+                    "batch_end_idx": item.batch_end_idx_,
+                    "row_count": item.batch_end_idx_ - item.batch_start_idx_,
+                }
+                for item in data.data_config_
+            ],
+        }
+
+        return ret
+
     def register_hook(self, name: str, cb: Callable) -> None:
         event_map = {
             "init": self.init_event_,

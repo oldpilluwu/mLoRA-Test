@@ -8,6 +8,7 @@ from .package import (
 )
 from .setup import (
     setup_cuda_check,
+    setup_json_trace_logger,
     setup_logging,
     setup_metric_logger,
     setup_seed,
@@ -27,4 +28,5 @@ __all__ = [
     "BitsAndBytesConfig",
     "NoneContexts",
     "setup_metric_logger",
+    "setup_json_trace_logger",
 ]

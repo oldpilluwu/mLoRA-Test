@@ -28,6 +28,7 @@ if __name__ == "__main__":
     mlora.utils.setup_logging(args.log_level, args.log_file)
     mlora.utils.setup_cuda_check()
     mlora.utils.setup_metric_logger(args.metric_file)
+    mlora.utils.setup_json_trace_logger(args.trace_jsonl)
 
     # enable the trace mode for profiling performance
     if args.trace:

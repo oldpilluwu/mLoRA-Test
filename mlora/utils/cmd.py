@@ -50,6 +50,11 @@ def _add_base_cmd(parser):
         default="/tmp/mlora_metric",
         help="Save metric to specific file.",
     )
+    parser.add_argument(
+        "--trace_jsonl",
+        type=str,
+        help="Write structured per-iteration trace records to a JSONL file.",
+    )
     return parser
 
 

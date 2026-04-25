@@ -47,3 +47,7 @@ def setup_trace_mode():
 
 def setup_metric_logger(path: str):
     mlora.profiler.metric_init(path)
+
+
+def setup_json_trace_logger(path: str | None):
+    mlora.profiler.trace_json_init(path)
