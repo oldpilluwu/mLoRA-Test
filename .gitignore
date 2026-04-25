@@ -176,3 +176,5 @@ adapters/*
 *.md
 !README.md
 !SECURITY.md
+
+validation_runs/
