@@ -154,6 +154,16 @@ class Executor:
             except Exception:
                 memory_free, memory_total = None, None
 
+            memory_payload = {
+                "allocated": memory_allocated,
+                "reserved": memory_reserved,
+                "max_allocated": max_memory_allocated,
+                "max_reserved": max_memory_reserved,
+                "free": memory_free,
+                "total": memory_total,
+            }
+            self.dispatcher_.observe_iteration(data, memory_payload)
+
             mlora.profiler.metric_log_dict(
                 "memory",
                 {
@@ -176,12 +186,7 @@ class Executor:
                     "total": iter_end - iter_start,
                 },
                 "memory_bytes": {
-                    "allocated": memory_allocated,
-                    "reserved": memory_reserved,
-                    "max_allocated": max_memory_allocated,
-                    "max_reserved": max_memory_reserved,
-                    "free": memory_free,
-                    "total": memory_total,
+                    **memory_payload,
                 },
                 "loss": None if total_loss is None else float(total_loss.item()),
                 **trace_state,

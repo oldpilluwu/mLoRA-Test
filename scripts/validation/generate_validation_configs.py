@@ -167,11 +167,28 @@ def build_workload(args, workload: str, concurrency: int):
         )
 
     config = {
-        "dispatcher": {"name": "default", "concurrency_num": concurrency},
+        "dispatcher": {
+            "name": args.dispatcher_name,
+            "concurrency_num": concurrency,
+        },
         "datasets": datasets,
         "adapters": adapters,
         "tasks": tasks,
     }
+
+    if args.dispatcher_name == "elastic":
+        config["dispatcher"].update(
+            {
+                "seq_bucket_size": args.seq_bucket_size,
+                "max_padding_waste": args.max_padding_waste,
+                "fairness_wait_steps": args.fairness_wait_steps,
+                "memory_safety_ratio": args.memory_safety_ratio,
+                "estimated_base_memory_bytes": args.estimated_base_memory_bytes,
+                "estimated_bytes_per_padded_token": (
+                    args.estimated_bytes_per_padded_token
+                ),
+            }
+        )
 
     config_path = workload_dir / f"c{concurrency}.yaml"
     write_yaml(config_path, config)
@@ -207,6 +224,18 @@ def main():
     parser.add_argument("--hetero-ranks", default="4,8,16,32")
     parser.add_argument("--hetero-seq-words", default="16,64,160,320")
     parser.add_argument("--hetero-mini-batch-sizes", default="1,2,4,8")
+    parser.add_argument(
+        "--dispatcher-name",
+        default="default",
+        choices=["default", "elastic"],
+        help="Dispatcher implementation to encode in generated configs.",
+    )
+    parser.add_argument("--seq-bucket-size", type=int, default=256)
+    parser.add_argument("--max-padding-waste", type=float, default=0.20)
+    parser.add_argument("--fairness-wait-steps", type=int, default=0)
+    parser.add_argument("--memory-safety-ratio", type=float, default=0.90)
+    parser.add_argument("--estimated-base-memory-bytes", type=float, default=0.0)
+    parser.add_argument("--estimated-bytes-per-padded-token", type=float, default=0.0)
     args = parser.parse_args()
 
     generated = []
@@ -220,6 +249,17 @@ def main():
         "concurrency": args.concurrency,
         "tasks": args.tasks,
         "data_size": args.data_size,
+        "dispatcher_name": args.dispatcher_name,
+        "elastic": {
+            "seq_bucket_size": args.seq_bucket_size,
+            "max_padding_waste": args.max_padding_waste,
+            "fairness_wait_steps": args.fairness_wait_steps,
+            "memory_safety_ratio": args.memory_safety_ratio,
+            "estimated_base_memory_bytes": args.estimated_base_memory_bytes,
+            "estimated_bytes_per_padded_token": (
+                args.estimated_bytes_per_padded_token
+            ),
+        },
     }
     write_json(Path(args.out_dir).resolve() / "manifest.json", manifest)
 

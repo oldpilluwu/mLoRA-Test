@@ -30,10 +30,12 @@ class TrainTask(Task):
 
     context_: TrainTaskContext
     config_: TrainTaskConfig
+    peek_tokens_cache_: Tuple[int, List[Tokens]] | None
 
     def __init__(self, config: TaskConfig, llm_name: str) -> None:
         super().__init__(config, llm_name)
         self.now_epoch_ = 1
+        self.peek_tokens_cache_ = None
 
     @override
     def is_done(self) -> bool:
@@ -115,21 +117,7 @@ class TrainTask(Task):
             f"epoch: {self.now_epoch_}/{self.config_.num_epochs_} "
             f"iteration: {self.now_data_idx_}/{len(self.data_)} step: {self.now_step_}"
         )
-        data_idx_s = self.now_data_idx_
-        data_idx_e = self.now_data_idx_ + self.config_.mini_batch_size_
-
-        # get the train raw string
-        batch_str = self.prompter_.generate_prompt(self.data_[data_idx_s:data_idx_e])
-
-        # convert the string to tokens
-        ret_tokens = list(
-            map(
-                lambda raw_str: self.tokenizer_.encode(
-                    raw_str, bos=True, eos=True, cutoff_len=self.config_.cutoff_len_
-                ),
-                batch_str,
-            )
-        )
+        ret_tokens = self._next_batch_tokens()
         end_idx = start_idx + len(ret_tokens)
 
         def loss_fn(
@@ -166,6 +154,30 @@ class TrainTask(Task):
         )
 
         return ret_tokens, [data_config]
+
+    def _next_batch_tokens(self) -> List[Tokens]:
+        if (
+            self.peek_tokens_cache_ is not None
+            and self.peek_tokens_cache_[0] == self.now_data_idx_
+        ):
+            return self.peek_tokens_cache_[1]
+
+        data_idx_s = self.now_data_idx_
+        data_idx_e = self.now_data_idx_ + self.config_.mini_batch_size_
+
+        batch_str = self.prompter_.generate_prompt(self.data_[data_idx_s:data_idx_e])
+        ret_tokens = [
+            self.tokenizer_.encode(
+                raw_str, bos=True, eos=True, cutoff_len=self.config_.cutoff_len_
+            )
+            for raw_str in batch_str
+        ]
+        self.peek_tokens_cache_ = (self.now_data_idx_, ret_tokens)
+        return ret_tokens
+
+    @override
+    def peek_next_token_lengths(self) -> List[int]:
+        return [len(tokens) for tokens in self._next_batch_tokens()]
 
     def _expand_batch_tokens(
         self, batch_tokens: List[Tokens], align_len: Optional[int] = None
@@ -255,6 +267,7 @@ class TrainTask(Task):
 
         self.now_step_ += 1
         self.now_data_idx_ += self.config_.mini_batch_size_
+        self.peek_tokens_cache_ = None
 
         if self.now_data_idx_ >= len(self.data_):
             self.now_epoch_ += 1

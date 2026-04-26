@@ -69,6 +69,9 @@ class Task:
     @abstractmethod
     def data(self, start_idx: int) -> Tuple[List[Tokens], List[MLoRADataConfig]]: ...
 
+    def peek_next_token_lengths(self) -> List[int] | None:
+        return None
+
     @abstractmethod
     def task_progress(self) -> int: ...
 

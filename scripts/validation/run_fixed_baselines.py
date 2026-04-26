@@ -16,6 +16,7 @@ def run_one(args, config_path: Path, output_dir: Path):
     trace_path = output_dir / "jsonl" / f"{run_name}.jsonl"
     metric_path = output_dir / "tensorboard" / run_name
     log_path = output_dir / "logs" / f"{run_name}.log"
+    process_log_path = output_dir / "logs" / f"{run_name}.process.log"
 
     trace_path.parent.mkdir(parents=True, exist_ok=True)
     metric_path.parent.mkdir(parents=True, exist_ok=True)
@@ -51,7 +52,10 @@ def run_one(args, config_path: Path, output_dir: Path):
     print(f"[RUN] {run_name}")
     print(" ".join(cmd))
 
-    result = subprocess.run(cmd, env=env)
+    with open(process_log_path, "w", encoding="utf-8") as process_log:
+        result = subprocess.run(
+            cmd, env=env, stdout=process_log, stderr=subprocess.STDOUT
+        )
     finished = time.time()
 
     summary = {
@@ -60,6 +64,7 @@ def run_one(args, config_path: Path, output_dir: Path):
         "trace_jsonl": str(trace_path),
         "metric_dir": str(metric_path),
         "log_file": str(log_path),
+        "process_log_file": str(process_log_path),
         "returncode": result.returncode,
         "started_at": started,
         "finished_at": finished,

@@ -129,6 +129,11 @@ class Dispatcher:
 
         return ret
 
+    def observe_iteration(
+        self, data: MLoRAData, memory_bytes: Dict[str, int | None]
+    ) -> None:
+        pass
+
     def register_hook(self, name: str, cb: Callable) -> None:
         event_map = {
             "init": self.init_event_,
